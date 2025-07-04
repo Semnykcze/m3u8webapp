@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3U8 Parser a Video Galerie</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .mode-switch-btn {
+            transition: all 0.3s ease;
+        }
+        .mode-switch-btn.active {
+            background-color: #4f46e5;
+            color: white;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-4xl bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-6">
+        <!-- Přepínač režimů -->
+        <div class="flex justify-center bg-gray-700 rounded-full p-1">
+            <button id="switchToM3U8" class="mode-switch-btn w-1/2 p-2 rounded-full font-semibold text-center">M3U8 Parser</button>
+            <button id="switchToGallery" class="mode-switch-btn w-1/2 p-2 rounded-full font-semibold text-center">Video Galerie</button>
+        </div>
+
+        <!-- Režim: M3U8 Parser -->
+        <div id="m3u8-parser-view" class="space-y-6">
+            <h1 class="text-2xl md:text-3xl font-bold text-center text-white">M3U8 Parser</h1>
+            <div class="space-y-4">
+                <div>
+                    <label for="m3u8-url" class="block text-sm font-medium text-gray-300 mb-1">URL adresa M3U8 souboru</label>
+                    <input type="url" id="m3u8-url" placeholder="https://example.com/stream.m3u8" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div class="relative flex items-center justify-center">
+                    <div class="absolute w-full border-t border-gray-600"></div>
+                    <div class="relative bg-gray-800 px-4 text-gray-400">nebo</div>
+                </div>
+                <div>
+                    <label for="m3u8-file" class="block text-sm font-medium text-gray-300 mb-1">Nahrát .m3u8 soubor</label>
+                    <input type="file" id="m3u8-file" accept=".m3u8" class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
+                </div>
+            </div>
+            <button id="parse-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300">Získat kvality</button>
+            <div class="bg-gray-900 p-4 rounded-lg min-h-[150px]">
+                <h3 class="font-semibold text-lg mb-2">Nalezené URL adresy streamů:</h3>
+                <div id="results-container" class="space-y-2 text-sm">
+                    <p class="text-gray-400">Výsledky se zobrazí zde...</p>
+                </div>
+            </div>
+            <p class="text-xs text-center text-gray-500">Poznámka: Načítání M3U8 z URL může selhat kvůli omezením CORS. Pokud k tomu dojde, zkuste soubor nahrát přímo.</p>
+        </div>
+
+        <!-- Režim: Video Galerie -->
+        <div id="video-gallery-view" class="hidden space-y-6">
+            <h1 class="text-2xl md:text-3xl font-bold text-center text-white">Video Galerie (Bunny.net)</h1>
+            <div id="gallery-loader" class="flex justify-center hidden"><div class="loader"></div></div>
+            <div id="gallery-error" class="text-center text-red-400 hidden"></div>
+            <div id="gallery-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <!-- Video kartičky budou vloženy zde -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modální okno pro přehrávač videa -->
+    <div id="video-modal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-black rounded-lg shadow-xl w-full max-w-4xl aspect-video relative">
+            <button id="close-modal-btn" class="absolute -top-3 -right-3 text-white bg-red-600 hover:bg-red-700 rounded-full h-8 w-8 flex items-center justify-center z-10 text-2xl font-bold" title="Zavřít">&times;</button>
+            <iframe id="video-iframe" class="w-full h-full rounded-lg" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+    </div>
+
+    <!-- Modální okno pro zobrazení odkazu -->
+    <div id="link-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6 space-y-4 relative">
+             <button onclick="closeLinkModal()" class="absolute top-3 right-3 text-gray-400 hover:text-white">&times;</button>
+            <h3 class="text-lg font-semibold text-white">Odkaz pro vložení videa</h3>
+            <input id="link-modal-url" type="text" readonly class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-gray-200">
+            <button onclick="copyLinkFromModal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">Zkopírovat odkaz</button>
+        </div>
+    </div>
+
+    <!-- Notifikace o zkopírování -->
+    <div x-data="{ show: false, message: '' }" x-show="show" x-cloak 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-2"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         x-transition:leave="transition ease-in duration-300"
+         x-transition:leave-start="opacity-100 transform translate-y-0"
+         x-transition:leave-end="opacity-0 transform translate-y-2"
+         @notify.window="message = $event.detail; show = true; setTimeout(() => show = false, 3000)"
+         class="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg z-50">
+        <p x-text="message"></p>
+    </div>
+
+
+    <script>
+        // --- PRVKY DOM ---
+        const switchToM3U8Btn = document.getElementById('switchToM3U8');
+        const switchToGalleryBtn = document.getElementById('switchToGallery');
+        const m3u8ParserView = document.getElementById('m3u8-parser-view');
+        const videoGalleryView = document.getElementById('video-gallery-view');
+        const m3u8UrlInput = document.getElementById('m3u8-url');
+        const m3u8FileInput = document.getElementById('m3u8-file');
+        const parseBtn = document.getElementById('parse-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const galleryContainer = document.getElementById('gallery-container');
+        const galleryLoader = document.getElementById('gallery-loader');
+        const galleryError = document.getElementById('gallery-error');
+        const videoModal = document.getElementById('video-modal');
+        const videoIframe = document.getElementById('video-iframe');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const linkModal = document.getElementById('link-modal');
+        const linkModalUrlInput = document.getElementById('link-modal-url');
+
+        // --- KONSTANTY PRO API ---
+        const BUNNY_LIBRARY_ID = '463334';
+        const BUNNY_API_KEY = '6cff0f17-f213-4291-af86cb021306-ee77-4952';
+        
+        let galleryLoaded = false;
+
+        // --- PŘEPÍNÁNÍ REŽIMŮ ---
+        function switchMode(mode) {
+            if (mode === 'm3u8') {
+                m3u8ParserView.classList.remove('hidden');
+                videoGalleryView.classList.add('hidden');
+                switchToM3U8Btn.classList.add('active');
+                switchToGalleryBtn.classList.remove('active');
+            } else if (mode === 'gallery') {
+                m3u8ParserView.classList.add('hidden');
+                videoGalleryView.classList.remove('hidden');
+                switchToM3U8Btn.classList.remove('active');
+                switchToGalleryBtn.classList.add('active');
+                if (!galleryLoaded) fetchBunnyVideos();
+            }
+        }
+        switchToM3U8Btn.addEventListener('click', () => switchMode('m3u8'));
+        switchToGalleryBtn.addEventListener('click', () => switchMode('gallery'));
+
+        // --- LOGIKA M3U8 PARSERU ---
+        parseBtn.addEventListener('click', () => {
+            const url = m3u8UrlInput.value.trim();
+            const file = m3u8FileInput.files[0];
+            if (url) parseFromUrl(url);
+            else if (file) parseFromFile(file);
+            else displayResults('<p class="text-yellow-400">Prosím, zadejte URL nebo vyberte soubor.</p>');
+        });
+        m3u8FileInput.addEventListener('change', () => { m3u8UrlInput.value = ''; });
+
+        async function parseFromUrl(url) {
+            displayResults('<p class="text-gray-400">Načítám a parsuji z URL...</p>');
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const m3u8Content = await response.text();
+                const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+                processM3U8Content(m3u8Content, baseUrl);
+            } catch (error) {
+                console.error('Chyba při načítání M3U8 z URL:', error);
+                displayResults(`<p class="text-red-400">Nepodařilo se načíst M3U8 z URL. Může to být způsobeno chybou sítě nebo omezením CORS. Zkuste soubor nahrát přímo.</p>`);
+            }
+        }
+
+        function parseFromFile(file) {
+            displayResults('<p class="text-gray-400">Čtu a parsuji soubor...</p>');
+            const reader = new FileReader();
+            reader.onload = (event) => processM3U8Content(event.target.result, '');
+            reader.onerror = () => displayResults('<p class="text-red-400">Nepodařilo se přečíst soubor.</p>');
+            reader.readAsText(file);
+        }
+
+        function processM3U8Content(content, baseUrl) {
+            const lines = content.split('\n');
+            const urls = lines.map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith('#') && line.endsWith('.m3u8')).map(line => {
+                if (line.startsWith('http')) return line;
+                try { return new URL(line, baseUrl).href; } catch (e) { return line; }
+            });
+            if (urls.length > 0) {
+                const uniqueUrls = [...new Set(urls)];
+                const html = uniqueUrls.map(url => 
+                    `<div class="bg-gray-800 p-2 rounded-md flex items-center justify-between">
+                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:text-indigo-300 break-all">${url}</a>
+                        <button onclick="copyToClipboard('${url}', 'URL streamu zkopírována!')" class="ml-2 p-2 rounded-md bg-gray-700 hover:bg-gray-600" title="Kopírovat">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                    </div>`
+                ).join('');
+                displayResults(html);
+            } else {
+                displayResults('<p class="text-yellow-400">Nebyly nalezeny žádné URL adresy streamů. Ujistěte se, že se jedná o master playlist.</p>');
+            }
+        }
+
+        function displayResults(html) { resultsContainer.innerHTML = html; }
+        
+        function copyToClipboard(text, message) {
+            navigator.clipboard.writeText(text).then(() => {
+                window.dispatchEvent(new CustomEvent('notify', { detail: message }));
+            }).catch(err => {
+                console.error('Chyba při kopírování:', err);
+                window.dispatchEvent(new CustomEvent('notify', { detail: 'Chyba při kopírování!' }));
+            });
+        }
+
+        // --- LOGIKA VIDEO GALERIE ---
+        async function fetchBunnyVideos() {
+            galleryLoader.classList.remove('hidden');
+            galleryError.classList.add('hidden');
+            galleryContainer.innerHTML = '';
+            const url = `https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos`;
+            const options = { method: 'GET', headers: { Accept: 'application/json', AccessKey: BUNNY_API_KEY } };
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP chyba! Status: ${response.status}`);
+                }
+                const data = await response.json();
+                displayVideos(data.items);
+                galleryLoaded = true;
+            } catch (error) {
+                console.error('Chyba při načítání videí z Bunny.net:', error);
+                galleryError.textContent = `Chyba: ${error.message}. Zkontrolujte API klíč a ID knihovny.`;
+                galleryError.classList.remove('hidden');
+            } finally {
+                galleryLoader.classList.add('hidden');
+            }
+        }
+
+        function displayVideos(videos) {
+            if (!videos || videos.length === 0) {
+                galleryContainer.innerHTML = '<p class="text-gray-400 col-span-full text-center">V této knihovně nebyla nalezena žádná videa.</p>';
+                return;
+            }
+            const videoCardsHtml = videos.map(video => {
+                // OPRAVA: Používáme hostname z API pro každé video
+                const videoHostname = "vz-9058c078-b84.b-cdn.net"; // Správný hostname pro vaši knihovnu
+                const thumbnailUrl = `https://${videoHostname}/${video.guid}/${video.thumbnailFileName}`;
+                const safeTitle = video.title.replace(/'/g, "\\'");
+                const embedUrl = `https://iframe.mediadelivery.net/embed/${BUNNY_LIBRARY_ID}/${video.guid}`;
+                // OPRAVA: Používáme správný hostname pro sestavení URL
+                const m3u8Url = `https://${videoHostname}/${video.guid}/playlist.m3u8`;
+
+                return `
+                    <div class="bg-gray-700 rounded-lg overflow-hidden shadow-lg flex flex-col">
+                        <div onclick="openVideoPlayer('${video.guid}')" class="relative cursor-pointer group">
+                            <img src="${thumbnailUrl}" alt="${safeTitle}" class="w-full h-40 object-cover" onerror="this.onerror=null;this.src='https://placehold.co/600x400/1f2937/9ca3af?text=No+Image';">
+                            <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
+                                <svg class="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all duration-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                            </div>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col justify-between">
+                            <h3 class="font-bold text-md truncate mb-3" title="${safeTitle}">${video.title}</h3>
+                            <div x-data="{ open: false }" class="relative">
+                                <button @click="open = !open" class="text-gray-400 hover:text-white focus:outline-none self-end ml-auto">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                                </button>
+                                <div x-show="open" @click.away="open = false" x-cloak
+                                     x-transition:enter="transition ease-out duration-100"
+                                     x-transition:enter-start="transform opacity-0 scale-95"
+                                     x-transition:enter-end="transform opacity-100 scale-100"
+                                     x-transition:leave="transition ease-in duration-75"
+                                     x-transition:leave-start="transform opacity-100 scale-100"
+                                     x-transition:leave-end="transform opacity-0 scale-95"
+                                     class="absolute right-0 bottom-8 mt-2 w-48 bg-gray-600 rounded-md shadow-lg z-20">
+                                    <a href="#" @click.prevent="openVideoPlayer('${video.guid}'); open = false" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-500">Přehrát video</a>
+                                    <a href="#" @click.prevent="openLinkModal('${embedUrl}'); open = false" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-500">Získat odkaz</a>
+                                    <a href="#" @click.prevent="copyToClipboard('${embedUrl}', 'Odkaz pro vložení zkopírován!'); open = false" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-500">Zkopírovat odkaz</a>
+                                    <a href="#" @click.prevent="copyToClipboard('${m3u8Url}', 'Odkaz na M3U8 zkopírován!'); open = false" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-500">Získat odkaz na .m3u8</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            galleryContainer.innerHTML = videoCardsHtml;
+        }
+
+        // --- FUNKCE PRO PŘEHRÁVAČ A MODÁLNÍ OKNA ---
+        function openVideoPlayer(videoGuid) {
+            const embedUrl = `https://iframe.mediadelivery.net/embed/${BUNNY_LIBRARY_ID}/${videoGuid}?autoplay=true`;
+            videoIframe.src = embedUrl;
+            videoModal.classList.remove('hidden');
+        }
+        function closeVideoPlayer() {
+            videoModal.classList.add('hidden');
+            videoIframe.src = '';
+        }
+        closeModalBtn.addEventListener('click', closeVideoPlayer);
+        videoModal.addEventListener('click', (event) => { if (event.target === videoModal) closeVideoPlayer(); });
+        
+        function openLinkModal(url) {
+            linkModalUrlInput.value = url;
+            linkModal.classList.remove('hidden');
+        }
+        function closeLinkModal() {
+            linkModal.classList.add('hidden');
+        }
+        function copyLinkFromModal() {
+            copyToClipboard(linkModalUrlInput.value, 'Odkaz pro vložení zkopírován!');
+            closeLinkModal();
+        }
+
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                if (!videoModal.classList.contains('hidden')) closeVideoPlayer();
+                if (!linkModal.classList.contains('hidden')) closeLinkModal();
+            }
+        });
+
+        // --- INICIALIZACE ---
+        switchMode('m3u8');
+    </script>
+
+</body>
+</html>

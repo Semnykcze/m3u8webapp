@@ -4,6 +4,7 @@
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
    <title>M3U8 Parser a Video Galerie</title>
+   <script src="config.js"></script>
    <script src="https://cdn.tailwindcss.com"></script>
    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
    <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -150,10 +151,11 @@
        const passwordInput = document.getElementById('password-input');
        const passwordError = document.getElementById('password-error');
 
-       // --- KONSTANTY PRO API A HESLO ---
-       const BUNNY_LIBRARY_ID = '463334';
-       const BUNNY_API_KEY = '6cff0f17-f213-4291-af86cb021306-ee77-4952';
-       const CORRECT_PASSWORD_HASH = 'f9dd48439975571344e33b6c59296c52809e44f545a905868457223961b8f8a2'; // SHA-256 hash of "masakr"
+       // --- CONFIGURATION FROM CONFIG.JS ---
+       const BUNNY_LIBRARY_ID = CONFIG.bunny.libraryId;
+       const BUNNY_API_KEY = CONFIG.bunny.apiKey;
+       const BUNNY_HOSTNAME = CONFIG.bunny.hostname;
+       const CORRECT_PASSWORD_HASH = CONFIG.security.passwordHash;
        
        let galleryLoaded = false;
        let galleryUnlocked = false;
@@ -284,7 +286,7 @@
            galleryLoader.classList.remove('hidden');
            galleryError.classList.add('hidden');
            galleryContainer.innerHTML = '';
-           const url = `https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos`;
+           const url = `${CONFIG.app.endpoints.bunnyVideos}/${BUNNY_LIBRARY_ID}/videos`;
            const options = { method: 'GET', headers: { Accept: 'application/json', AccessKey: BUNNY_API_KEY } };
            try {
                const response = await fetch(url, options);
@@ -310,10 +312,10 @@
                return;
            }
            const videoCardsHtml = videos.map(video => {
-               const videoHostname = "vz-9058c078-b84.b-cdn.net"; // Správný hostname pro vaši knihovnu
+               const videoHostname = BUNNY_HOSTNAME;
                const thumbnailUrl = `https://${videoHostname}/${video.guid}/${video.thumbnailFileName}`;
                const safeTitle = video.title.replace(/'/g, "\\'");
-               const embedUrl = `https://iframe.mediadelivery.net/embed/${BUNNY_LIBRARY_ID}/${video.guid}`;
+               const embedUrl = `${CONFIG.app.endpoints.mediaDelivery}/${BUNNY_LIBRARY_ID}/${video.guid}`;
                const m3u8Url = `https://${videoHostname}/${video.guid}/playlist.m3u8`;
 
                return `
@@ -353,7 +355,7 @@
 
        // --- FUNKCE PRO PŘEHRÁVAČ A MODÁLNÍ OKNA ---
        function openVideoPlayer(videoGuid) {
-           const embedUrl = `https://iframe.mediadelivery.net/embed/${BUNNY_LIBRARY_ID}/${videoGuid}?autoplay=true`;
+           const embedUrl = `${CONFIG.app.endpoints.mediaDelivery}/${BUNNY_LIBRARY_ID}/${videoGuid}?autoplay=true`;
            videoIframe.src = embedUrl;
            videoModal.classList.remove('hidden');
        }
@@ -385,7 +387,7 @@
        });
 
        // --- INICIALIZACE ---
-       switchMode('m3u8');
+       switchMode(CONFIG.ui.defaultMode);
    </script>
 
 </body>
